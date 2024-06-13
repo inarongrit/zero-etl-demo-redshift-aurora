@@ -1,0 +1,181 @@
+Parameters:
+  Username:
+    Description: Username for Aurora MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    Default: bevelvoerder
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  Password:
+    NoEcho: 'true'
+    Description: Password for Aurora MySQL database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    Default: Passw0rd
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+  RSUsername:
+    Description: Username for Redshift cluster access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    Default: bevelvoerder
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  RSPassword:
+    NoEcho: 'true'
+    Description: Password for Redshift cluster access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    Default: Passw0rd
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+Resources:
+  RDSDBClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: Enables enhanced binlog
+      Family: aurora-mysql8.0
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+      Parameters:
+        aurora_enhanced_binlog: '1'
+        binlog_format: ROW
+        binlog_backup: '0'
+        binlog_replication_globaldb: '0'
+        binlog_row_metadata: full
+        binlog_row_image: full
+        aws_default_s3_role: !GetAtt rdss3demoaccess.Arn
+  RDSDBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      DBClusterParameterGroupName: !Ref RDSDBClusterParameterGroup
+      Engine: aurora-mysql
+      EngineVersion: 8.0.mysql_aurora.3.06.0
+      MasterUsername: !Ref Username
+      MasterUserPassword: !Ref Password
+      VpcSecurityGroupIds:
+        - !GetAtt mysqlinbound.GroupId
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+      AssociatedRoles:
+        - RoleArn: !GetAtt rdss3demoaccess.Arn
+  RDSDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref RDSDBCluster
+      DBInstanceClass: db.t4g.medium
+      Engine: aurora-mysql
+      PubliclyAccessible: true
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+  RSClusterParameterGroup:
+    Type: AWS::Redshift::ClusterParameterGroup
+    Properties:
+      Description: Enables case sensitivity
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+      ParameterGroupFamily: redshift-1.0
+      Parameters:
+        - ParameterName: enable_case_sensitive_identifier
+          ParameterValue: 'true'
+  RSCluster:
+    Type: AWS::Redshift::Cluster
+    Properties:
+      ClusterParameterGroupName: !Ref RSClusterParameterGroup
+      ClusterType: multi-node
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+      DBName: dev
+      Encrypted: true
+      MasterUsername: !Ref RSUsername
+      MasterUserPassword: !Ref RSPassword
+      NodeType: ra3.xlplus
+      NumberOfNodes: 2
+      NamespaceResourcePolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: redshift.amazonaws.com
+            Action: redshift:AuthorizeInboundIntegration
+            Condition:
+              StringEquals:
+                aws:SourceArn: !GetAtt RDSDBCluster.DBClusterArn
+          - Effect: Allow
+            Principal:
+              AWS: !Join
+                - ':'
+                - - arn
+                  - !Ref AWS::Partition
+                  - iam
+                  - ''
+                  - !Ref AWS::AccountId
+                  - root
+            Action: redshift:CreateInboundIntegration
+  Integration:
+    Type: AWS::RDS::Integration
+    Properties:
+      SourceArn: !GetAtt RDSDBCluster.DBClusterArn
+      TargetArn: !GetAtt RSCluster.ClusterNamespaceArn
+      DataFilter: 'include: *.*, exclude: demodb.users'
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+    DependsOn:
+      - RSClusterParameterGroup
+      - RDSDBClusterParameterGroup
+      - RDSDBCluster
+      - RDSDBInstance
+      - RSCluster
+  rdss3demoaccess:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: Allow
+            Principal:
+              Service: rds.amazonaws.com
+            Action: sts:AssumeRole
+      RoleName: rds_demo_s3_role
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: S3DemoAccess
+                Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - arn:aws:s3:::redshift-blogs
+                  - arn:aws:s3:::redshift-blogs/*
+  mysqlinbound:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      Tags:
+        - Key: purpose
+          Value: demo-zero-etl-integration
+      GroupDescription: MySQL inbound access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 0.0.0.0/0
+Outputs:
+  IntegrationARN:
+    Description: Integration ARN
+    Value: !Ref Integration
