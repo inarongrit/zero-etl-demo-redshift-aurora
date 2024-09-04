@@ -99,7 +99,7 @@ Resources:
       MasterUsername: !Ref RSUsername
       MasterUserPassword: !Ref RSPassword
       NodeType: ra3.xlplus
-      NumberOfNodes: 2
+      NumberOfNodes: 1
       NamespaceResourcePolicy:
         Version: '2012-10-17'
         Statement:
