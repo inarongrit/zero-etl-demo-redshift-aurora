@@ -121,6 +121,7 @@ Resources:
                   - !Ref AWS::AccountId
                   - root
             Action: redshift:CreateInboundIntegration
+        PubliclyAccessible: false
   Integration:
     Type: AWS::RDS::Integration
     Properties:
