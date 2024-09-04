@@ -55,7 +55,7 @@ Resources:
     Properties:
       DBClusterParameterGroupName: !Ref RDSDBClusterParameterGroup
       Engine: aurora-mysql
-      EngineVersion: 8.0.mysql_aurora.3.06.0
+      EngineVersion: 8.0.mysql_aurora.3.07.1
       MasterUsername: !Ref Username
       MasterUserPassword: !Ref Password
       VpcSecurityGroupIds:
@@ -71,7 +71,7 @@ Resources:
       DBClusterIdentifier: !Ref RDSDBCluster
       DBInstanceClass: db.t4g.medium
       Engine: aurora-mysql
-      PubliclyAccessible: true
+      PubliclyAccessible: false
       Tags:
         - Key: purpose
           Value: demo-zero-etl-integration
